@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+
+# Let's say, for the sake of argument, that you were running a VMS Hobbyist
+# License.  And let's say that you had a working license file (in the
+# form of a DCL script).  But let's also say, it's expiring, or expired,
+# and you're concerned that even if you get HPE to renew it in 2020, it's
+# going to expire at the end of 2021, and you want to keep running on
+# VAX, or you want to run a pre-VSI version on Alpha.
+
+# Thanks, by the way, to VMS Software, Inc. for continung the hobbyist
+# program for Alpha, Itanium, and, eventually x86.
+
+# Let's further stipulate that somehow you managed to get hold of the C
+# program pakgen and build it, so you had the ability to generate non-
+# expiring licenses for your DEC licensed software.
+
+# Then in that case, if you were a sort who didn't care much about niceties,
+# you might want to run this to generate a DCL script that would replace your
+# time-limited licenses with non-expiring ones.
+
+# Of course you shouldn't execute the resulting script, with privileges
+# enabled, on a VMS system, because that'd be wrong.  Oh so very wrong.
+
+# This code is in the public domain.
+
+# Defaults
+INP="./Hobbyist-USE-FINALVA.txt"
+OUTP="./LIC.CMD"
+PAKGEN="./pakgen"
+k=""
+
+usage () {
+    echo "$0 [-h] [-k key (from license file)] \\" 1>&2
+    echo "    [-l license-file ($INP)] \\" 1>&2
+    echo "    [-o output-cmd-script ($OUTP)] [-p pakgen ($PAKGEN)]" 1>&2
+}
+
+while getopts ":hk:l:o:p:" opt; do
+    case ${opt} in
+    h )
+        usage
+        exit 0
+        ;;
+    \? )
+        usage
+        exit 1
+        ;;
+    : )
+        usage
+        exit 1
+        ;;
+    k )
+        k=$OPTARG
+        ;;
+    l )
+        INP=$OPTARG
+        ;;
+    o )
+        OUTP=$OPTARG
+        ;;
+    p )
+        PAKGEN=$OPTARG
+        ;;
+    esac
+done
+shift $((OPTIND -1))
+d=$(date +%y%m%d)
+if [ -z "${k}" ]; then
+    # Extract key from license file
+    k=$(grep "AUTHORIZATION=HOBBYIST" ${INP} | \
+        head -1 | cut -d '-' -f 3 | sed -e 's/KEY//')
+fi
+if [ -z "${k}" ]; then
+    # Default
+    k="00000"
+fi
+AUTH="HOBBYIST-VA-KEY${k}-${d}"
+PKGS=$(< ${INP} grep "LICENSE REGISTER" | awk '{print $4}')
+echo "\$! Yarr Matey!" > ${OUTP}
+l="/LOG/PRODUCER=DEC"
+for p in $PKGS; do
+    q=$(${PAKGEN} -p DEC -i DEC -a ${AUTH} ${p})
+    r="${p}${l}"
+    echo "\$ ${q}" >> ${OUTP}
+    echo "\$ LICENSE DISABLE ${r}/ALL" >> ${OUTP}
+    echo "\$ LICENSE UNLOAD ${r}" >> ${OUTP}
+    echo "\$ LICENSE ENABLE ${r} -" >> ${OUTP}
+    echo "        /AUTHORIZATION=${AUTH}" >> ${OUTP}
+    echo "\$ LICENSE LOAD ${r}" >> ${OUTP}
+done
+echo "\$! Yo ho ho, a pirate's life for me!" >> ${OUTP}
